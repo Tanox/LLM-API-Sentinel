@@ -1,5 +1,14 @@
 # 数据模型与安全文档
 
+> 适用版本：v2.10.35 · 最近校对：2026-11-09 · 真源：`app/`、`supabase/` 与 `package.json`
+>
+> **代码对齐要点（下文旧表述与本表冲突时，以本表及源码为准）**：
+> - 默认后台写入方为 Supabase Cron → Edge Function `monitor`（Deno），不是 Express Monitor；Express 仅见于可选的 `examples/self-host-server.ts`。
+> - NaN
+> - 仓库未启用自动数据清理：`supabase/cron.sql` 只有被注释掉的 `status_history` 90 天清理示例，`alerts` 无清理任务。
+> - 写入 `api_status`（upsert）与 `status_history`（insert）是两次独立调用，非同一事务，不保证原子性/回滚。
+> - 文档中的 Firestore 术语（`where()` / `getAll()` / Batch / 文档 / 集合）、`validate_api_status()` 触发器与 `cleanupOldData()` 均为历史示意，当前实现为 PostgreSQL + `CHECK` 约束 + `update_updated_at_column` 触发器，详见 `supabase/schema.sql`。
+
 ## 1. 数据模型
 
 ### 1.1 实体定义
@@ -138,7 +147,7 @@ interface Alert {
 ```mermaid
 graph TD
     subgraph External[外部系统]
-        Monitor[Express Monitor]
+        Monitor[Supabase Cron / Edge Function]
         User[用户操作]
     end
     
@@ -161,8 +170,8 @@ graph TD
     User -->|手动检查| API
     User -->|解决告警| Alerts
     
-    API -->|Realtime| Dashboard
-    API -->|Realtime| Charts
+    API -->|首屏查询 + 前端定时探测| Dashboard
+    API -->|前端定时探测| Charts
     
     History -->|查询| Charts
     
@@ -175,7 +184,7 @@ graph TD
 #### API 状态更新流程
 ```mermaid
 flowchart TD
-    A[Express Monitor 启动] --> B[批量获取 API 列表]
+    A[Supabase Cron 触发 Edge Function] --> B[批量获取 API 列表]
     B --> C[并发执行 API 检查]
     C --> D{检查成功?}
     
@@ -389,7 +398,7 @@ flowchart TD
     D -->|有效| E[停止写入操作]
     D -->|无效| F[选择其他备份]
     
-    E --> G[清空目标集合]
+    E --> G[清空/重建目标表数据]
     G --> H[批量导入数据]
     
     H --> I[恢复写入操作]
@@ -402,7 +411,7 @@ flowchart TD
 
 ### 6.1 Supabase RLS 策略
 
-安全模型（v2.6.3+）：
+安全模型（自 v2.6.3 起的历史策略）：
 - **READ (SELECT)**: 公开（所有用户，包括 anon）- 允许仪表盘数据访问
 - **WRITE (INSERT/UPDATE)**: 仅认证用户 - 匿名用户不能修改数据
 - **后台服务**: 使用 service_role 密钥，绕过 RLS

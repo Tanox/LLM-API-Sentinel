@@ -1,15 +1,25 @@
 # LLM API Sentinel 项目规范 (v2.10.35)
 
+> 适用版本：v2.10.35 · 最近校对：2026-11-09 · 真源：`app/`、`supabase/` 与 `package.json`
+>
+> **代码对齐要点（下文旧表述与本表冲突时，以本表及源码为准）**：
+> - 版本单一真源为 `package.json`（2.10.35）；依赖版本以 `^` 范围为准；包管理器 pnpm 9.15.0、CI Node.js 22；覆盖率门禁为 70 / 55 / 70 / 70（`jest.config.cjs`）。
+> - 29 个 API 的权威清单为 `app/constants/apis.json`（16 美国/全球 + 13 中国），由 `scripts/sync-apis.mjs` 同步到 Edge Function；`app/lib/mock-data.ts` 已删除。
+> - 默认后台为 Supabase Cron → `POST /monitor`（返回 `{ ok, checked, offline, degraded, at }`）；Express 为可选自建模式；前端每 5 分钟定时探测，Realtime 仅用于 `alerts`。
+> - 组件 Props 以源码为准：`DashboardHeaderProps` 的 `geo` 为内联结构且 `isGeoLoading` / `refreshGeo` / `resolveAlert` 可选；`ApiStatusGridProps` 含 `isChecking?`；`StatusDotProps` 无 `size`；`ProgressBarProps` 的 `variant` 必填且有 `showLabel?`；`AlertsDropdownProps.resolveAlert` 返回 `void`。
+> - 日志为结构化 JSON；错误码为 `SUPABASE_QUERY_ERROR`（无 `DATABASE_ERROR`）；`Alert.timestamp` 为 `Date | string | number`；重试为固定 1000ms 延迟；主题为浅色/深色双主题。
+> - CI 步骤：`pnpm install --frozen-lockfile` → `node scripts/sync-apis.mjs --check` → `pnpm lint` → `pnpm test -- --coverage` → `pnpm build`（无独立 `tsc --noEmit` 步骤）；部署用 `supabase functions deploy monitor --no-verify-jwt`。
+
 ## 1. 项目概述
 
 LLM API Sentinel 是一个全球主流大模型 API 实时监控与历史可用性追踪系统，旨在为开发者和企业提供可靠的 API 状态监控服务。
 
 ### 1.1 核心功能
 - **全球监控**：追踪美国（OpenAI, Anthropic, Google, Meta/Groq, Mistral）和中国（Moonshot/Kimi, ZhipuAI, Baichuan, Alibaba/Qwen, Tencent/Hunyuan, Baidu/Ernie, DeepSeek）主流 AI 供应商的连通性与延迟，共 29 个核心 API
-- **历史数据**：Recharts 面积图可视化性能趋势；支持 1H/6H/24H 时间范围（`TIME_RANGES: lastHour/last6Hours/last24Hours`），曲线末点锚定当前实时延迟（`app/components/LatencyHistoryChart.tsx`，`ssr:false` 动态加载 + ChartSkeleton）
-- **自适应 UI**：全响应式设计（1/2/3/4 列网格），采用浅色/深色双主题（next-themes `defaultTheme="system"`），默认 Dark Indigo 沉浸主题（靛蓝 #6366f1 + 紫色 #8b5cf6）
-- **实时更新**：基于 Supabase Realtime 实现状态即时同步（默认 5 分钟后台检查周期）
-- **安全访问**：手动健康检查受 Supabase Auth (Google OAuth) 保护
+- **历史数据**：Recharts 面积图可视化性能趋势；支持 1H/6H/24H 时间范围（`TIME_RANGES: lastHour/last6Hours/last24Hours`），曲线末点锚定当前实时延迟（`app/components/LatencyHistoryChart.tsx`，静态导入（页面级 Suspense 骨架由 DashboardSkeleton 提供））
+- **自适应 UI**：全响应式设计（1/2/3/4 列网格），采用浅色/深色双主题（next-themes `defaultTheme="system"`），浅色/深色双主题（默认跟随系统，深色档为 Dark Indigo）（靛蓝 #6366f1 + 紫色 #8b5cf6）
+- **实时更新**：首屏读取 api_status + 前端 5 分钟定时探测；仅 alerts 使用 Realtime（默认 5 分钟后台检查周期）
+- **安全访问**：手动健康检查对访客开放，无需登录（Google OAuth 仅用于登录）
 - **智能告警**：自动检测 API 宕机（offline）、降级（degraded）和延迟过高（阈值 1500ms），并生成告警通知
 - **数据缓存**：内存 + localStorage 双层缓存机制（默认 30 秒缓存，动态 5 秒- 1 分钟）
 - **地理位置**：检测监控节点位置，24 小时本地缓存（ipapi.co）
@@ -27,10 +37,10 @@ LLM API Sentinel 是一个全球主流大模型 API 实时监控与历史可用�
 | 实时订阅 | Supabase Realtime | - |
 | 样式 | Tailwind CSS 4.1.11 | 4.1.11 |
 | 组件库 | shadcn/ui (基于 Tailwind) | - |
-| 图表 | Recharts 3.8.0 面积图（`ssr:false` 动态导入） | 3.8.0 |
+| 图表 | Recharts 3.8.0 面积图（静态导入） | 3.8.0 |
 | 图标 | Lucide React | - |
 | 状态管理 | Zustand 5.0.12 | 5.0.12 |
-| 设计系统 | [design-system.md](design-system.md) | v2.10.23 |
+| 设计系统 | [design-system.md](design-system.md) | v2.10.35 |
 | 国际化 | 自定义 i18n 系统 | - |
 | 时间处理 | date-fns 4.1.0 | 4.1.0 |
 
@@ -56,7 +66,7 @@ LLM API Sentinel 是一个全球主流大模型 API 实时监控与历史可用�
         │                      │                         ▼
         └───── Realtime  ──────┘             ┌─────────────────┐
                                                 │  External LLM  │
-                                                │  APIs (12)     │
+                                                │  APIs (29)     │
                                                 └─────────────────┘
 ```
 
@@ -86,14 +96,14 @@ LLM API Sentinel 是一个全球主流大模型 API 实时监控与历史可用�
 │   │   ├── AlertsDropdown.tsx    # 告警下拉组件（shadcn Dialog）
 │   │   ├── ApiConfig.tsx         # API 配置组件（localStorage 读写）
 │   │   ├── ApiStatusGrid.tsx     # API 状态网格（主组件，扁平 <section> 网格直接渲染）
-│   │   ├── ChartSkeleton.tsx     # 图表骨架屏加载占位
+│   │   ├── ChartSkeleton.tsx     # 图表骨架屏占位（当前无引用）
 │   │   ├── DashboardClient.tsx   # 仪表盘客户端主组件（'use client'）
 │   │   ├── DashboardFooter.tsx   # 页脚组件（3 列 Feature 展示）
 │   │   ├── DashboardHeader.tsx   # 头部组件（Logo/告警/主题/地理/语言切换/登录）
 │   │   ├── LocaleSwitcher.tsx     # 语言切换器（DropdownMenuRadioGroup，16 语言即时切换 + 持久化）
 │   │   ├── DashboardSkeleton.tsx # 仪表盘整体骨架屏
 │   │   ├── GeoOptInDialog.tsx    # 地理位置授权弹窗
-│   │   ├── LatencyHistoryChart.tsx # 延迟历史图表（Recharts 面积图，ssr:false）
+│   │   ├── LatencyHistoryChart.tsx # 延迟历史图表（Recharts 面积图，静态导入）
 │   │   ├── ProgressBar.tsx       # 进度条组件（渐变 + shimmer）
 │   │   ├── StatCard.tsx          # 统计卡片组件（在线/降级/离线/平均延迟）
 │   │   ├── StatusDot.tsx         # 状态圆点组件（三色 + 光晕）
@@ -118,7 +128,6 @@ LLM API Sentinel 是一个全球主流大模型 API 实时监控与历史可用�
 │   │   ├── i18n.test.ts          # 国际化单元测试
 │   │   ├── metrics.ts            # 指标计算（平均延迟、可用性等）
 │   │   ├── metrics-storage.ts    # 累计指标持久化（可用性/延迟历史真实写入 localStorage，跨刷新累加）
-│   │   ├── mock-data.ts          # Mock 数据（开发/测试用，v2.10.22 起不再作初始状态注入，Supabase 未配置时为空态等待真实探测）
 │   │   ├── monitor.ts            # API 监控核心逻辑（检查 + 重试 + 指标）
 │   │   ├── monitor.test.ts       # 监控逻辑单元测试
 │   │   ├── notification.ts       # 通知处理
@@ -144,7 +153,7 @@ LLM API Sentinel 是一个全球主流大模型 API 实时监控与历史可用�
 │   ├── components.html           # 组件库规范展示页（色彩/字体/间距/组件）
 │   └── assets/
 │       ├── styles.css            # 设计 token + 动画（与 app/style.css 语义变量对齐）
-│       ├── data.js               # 真实模拟数据 + i18n（与 app/lib/mock-data.ts 对齐）
+│       ├── data.js               # 原型演示数据与 i18n（原型历史参考，非应用数据源）
 │       └── app.js                # 共享逻辑（主题/语言/渲染/图表/交互）
 ├── openspec/
 │   ├── README.md                 # OpenSpec 说明
@@ -190,7 +199,7 @@ LLM API Sentinel 是一个全球主流大模型 API 实时监控与历史可用�
 | 组件 | PascalCase | `ApiStatusGrid` |
 | 函数 | camelCase | `performCheck` |
 | 变量 | camelCase | `apiStatus` |
-| 常量 | UPPER_SNAKE_CASE | `LATENCY_THRESHOLD` |
+| 常量 | SCREAMING_SNAKE_CASE | `LATENCY_THRESHOLD` |
 | 类型/接口 | PascalCase | `ApiStatus` |
 | 翻译 Key | 小写 + 点分隔 | `dashboard.title` |
 
@@ -236,7 +245,7 @@ LLM API Sentinel 是一个全球主流大模型 API 实时监控与历史可用�
   isChecking: boolean;        // 是否正在检查
   lastUpdate: Date | null;    // 最后更新时间
   geo: GeoLocation | null;    // 地理位置信息
-  runCheck: () => void;       // 执行检查
+  runCheck: () => Promise<void>;       // 执行检查
   resolveAlert: (id: string) => Promise<void>;  // 解决告警
   login: () => Promise<void>; // 登录
   logout: () => Promise<void>; // 登出
@@ -252,7 +261,7 @@ LLM API Sentinel 是一个全球主流大模型 API 实时监控与历史可用�
   statuses: ApiStatus[];    // API 状态列表
   history: StatusHistory[]; // 历史数据
   isChecking: boolean;      // 是否正在检查
-  runCheck: () => void;     // 执行检查
+  runCheck: () => Promise<void>;     // 执行检查
 }
 ```
 
@@ -366,22 +375,23 @@ interface DashboardHeaderProps {
   setShowAlerts: (show: boolean) => void;
   theme: string | undefined;
   setTheme: (theme: string) => void;
-  geo: GeoLocation | null;
-  isGeoLoading: boolean;
-  refreshGeo: () => void;
+  geo: { city: string; country: string; ip?: string } | null;
+  isGeoLoading?: boolean;
+  refreshGeo?: () => void;
   login: () => Promise<void>;
   logout: () => Promise<void>;
-  resolveAlert: (id: string) => Promise<void>;
+  resolveAlert?: (id: string) => Promise<void>;
 }
 ```
 
 ### 5.3 ApiStatusGrid
-**功能**：以网格形式展示所有 API 状态卡片，支持按供应商分组（主组件）
+**功能**：以扁平网格展示所有 API 状态卡片（不按供应商分组，主组件）
 
 **Props**：
 ```typescript
 interface ApiStatusGridProps {
   statuses: ApiStatus[];
+  isChecking?: boolean;
 }
 ```
 
@@ -396,7 +406,7 @@ interface StatusGridProps {
 ```
 
 ### 5.5 LatencyHistoryChart
-**功能**：展示历史延迟趋势（Recharts AreaChart，`ssr:false` 动态导入 + ChartSkeleton 骨架屏，React.memo 优化）
+**功能**：展示历史延迟趋势（Recharts AreaChart，静态导入（页面级 Suspense 骨架由 DashboardSkeleton 提供），React.memo 优化）
 
 **Props**：
 ```typescript
@@ -463,8 +473,7 @@ interface StatCardProps {
 **Props**：
 ```typescript
 interface StatusDotProps {
-  status: 'online' | 'offline' | 'degraded';
-  size?: 'sm' | 'md' | 'lg';
+  status: ApiStatus['status'];
 }
 ```
 
@@ -475,7 +484,8 @@ interface StatusDotProps {
 ```typescript
 interface ProgressBarProps {
   value: number;  // 0-100
-  variant?: 'success' | 'warning' | 'danger';
+  variant: 'success' | 'warning' | 'danger';
+  showLabel?: boolean;
 }
 ```
 
@@ -487,20 +497,13 @@ interface ProgressBarProps {
 ## 6. API 监控逻辑
 
 ### 6.1 监控的 API
-| 区域 | API 名称 | Provider | ID | URL |
-|-----|---------|----------|-----|-----|
-| 美国 | GPT-4o | OpenAI | `openai-gpt-4o` | https://api.openai.com/v1/models |
-| 美国 | Claude 3.5 | Anthropic | `anthropic-claude-3-5` | https://api.anthropic.com/v1/messages |
-| 美国 | Gemini 1.5 | Google | `google-gemini-1-5` | https://generativelanguage.googleapis.com/v1beta/models |
-| 美国 | Llama 3 (Groq) | Meta | `meta-llama-3` | https://api.groq.com/openai/v1/models |
-| 美国 | Mistral Large | Mistral | `mistral-large` | https://api.mistral.ai/v1/models |
-| 中国 | Kimi (Moonshot) | Moonshot | `moonshot-v1` | https://api.moonshot.cn/v1/models |
-| 中国 | GLM-4 (Zhipu) | ZhipuAI | `zhipu-glm-4` | https://open.bigmodel.cn/api/paas/v4/model_list |
-| 中国 | Baichuan 2 | Baichuan | `baichuan-2` | https://api.baichuan-ai.com/v1/models |
-| 中国 | Qwen Max (Ali) | Alibaba | `qwen-max` | https://dashscope.aliyuncs.com/api/v1/models |
-| 中国 | Hunyuan (Tencent) | Tencent | `hunyuan-pro` | https://hunyuan.tencentcloudapi.com |
-| 中国 | Ernie 4.0 (Baidu) | Baidu | `ernie-4` | https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop/chat/completions |
-| 中国 | DeepSeek V3 | DeepSeek | `deepseek-v3` | https://api.deepseek.com/models |
+
+> 完整清单（29 条）以 `app/constants/apis.json` 为单一真源，并由 `scripts/sync-apis.mjs` 同步到 `supabase/functions/monitor/apis.json`；本表不再重复逐条维护，避免双源漂移。
+
+| 区域 | 数量 | 供应商 |
+|-----|------|--------|
+| 美国 / 全球 | 16 | OpenAI / Anthropic / Google / Meta(Groq) / Mistral / xAI / Cohere / Perplexity / Together AI / Replicate / Stability AI / HuggingFace / OpenRouter / Fireworks / NVIDIA / AI21 |
+| 中国 | 13 | Moonshot / ZhipuAI / Baichuan / Alibaba / Tencent / Baidu / DeepSeek / MiniMax / iFlytek / ByteDance / 01.AI / SiliconFlow / StepFun |
 
 ### 6.2 监控配置
 | 常量 | 值 | 说明 |
@@ -509,17 +512,17 @@ interface ProgressBarProps {
 | `DEGRADED_THRESHOLD` | 1000ms | 降级阈值，超过此值标记为降级 |
 | `MAX_RETRIES` | 2 | 最大重试次数 |
 | `RETRY_DELAY` | 1000ms | 重试间隔 |
-| `MAX_CONCURRENT` | 5 | 最大并发请求数 |
+| `MAX_CONCURRENT_REQUESTS` | 5 | 最大并发请求数 |
 | `CHECK_INTERVAL` | 5 分钟 | 后台检查间隔 |
 | `CACHE_EXPIRY` | 30 秒 | 默认缓存过期时间 |
 | `GEO_INFO_EXPIRY` | 24 小时 | 地理位置缓存过期时间 |
 
 ### 6.3 后台监控流程
-1. Express 服务器启动后 10 秒执行首次检查
-2. 每 5 分钟自动执行一次后台检查
-3. 使用并发管理器控制请求数量（最大 5 个并发）
-4. 检查结果批量写入 Supabase
-5. 根据状态生成智能告警
+1. 浏览器端 useApiMonitor 挂载时先探测一次，之后按 CHECK_INTERVAL（5 分钟）定时探测
+2. 服务端持久化（可选）：cron.sql 的 pg_cron 每 5 分钟 POST /monitor 触发 Edge Function
+3. Edge Function 读取白名单 apis.json，探测 29 个端点（6 秒超时）
+4. 结果写入 api_status（upsert）与 status_history（insert），返回 { ok, checked, offline, degraded, at }
+5. 可选自建 Express 模式启动 10 秒后首检，并自行创建告警
 
 ## 7. 数据模型
 
@@ -596,11 +599,11 @@ interface Alert {
 | API 错误 | `API_UNAVAILABLE` | API 服务不可用 |
 | API 错误 | `API_ERROR` | API 请求失败 |
 | API 错误 | `API_RATE_LIMITED` | API 请求被限流 |
-| 认证错误 | `AUTH_REQUIRED` | 需要登录 |
+| 认证错误 | `AUTH_REQUIRED` | 登录态相关（手动探测无需登录） |
 | 认证错误 | `AUTH_FAILED` | 登录失败 |
 | 认证错误 | `AUTH_EXPIRED` | 会话过期 |
 | Supabase 错误 | `SUPABASE_ERROR` | Supabase 服务错误 |
-| Supabase 错误 | `DATABASE_ERROR` | 数据库操作失败 |
+| Supabase 错误 | `SUPABASE_QUERY_ERROR` | 数据库操作失败 |
 | 验证错误 | `VALIDATION_ERROR` | 输入验证失败 |
 | 未知错误 | `UNKNOWN_ERROR` | 未知错误 |
 
@@ -690,7 +693,7 @@ CREATE POLICY "alerts_update_auth" ON alerts FOR UPDATE USING (auth.role() = 'au
 | 优化项 | 实现方式 |
 |-------|---------|
 | 并发控制 | 限制最大并发请求数（5 个） |
-| 重试机制 | 指数退避重试策略 |
+| 重试机制 | 固定 1000ms 延迟重试 |
 | 批量写入 | 批量更新 Supabase |
 | 缓存策略 | 智能过期时间计算 |
 
@@ -698,17 +701,17 @@ CREATE POLICY "alerts_update_auth" ON alerts FOR UPDATE USING (auth.role() = 'au
 
 ### 12.1 持续集成
 ```
-代码提交 → GitHub Actions → 安装依赖 → 代码检查 → 类型检查 → 运行测试 → 构建
+代码提交 → GitHub Actions → pnpm install --frozen-lockfile → sync-apis --check → lint → test（覆盖率）→ build
 ```
 
 ### 12.2 检查步骤
 | 步骤 | 命令 | 用途 |
 |-----|------|------|
-| 安装依赖 | `npm install` | 安装项目依赖 |
-| ESLint | `npm run lint` | 代码风格检查 |
-| TypeScript | `npx tsc --noEmit` | 类型检查 |
-| 测试 | `npm test` | 运行单元测试 |
-| 构建 | `npm run build` | 构建生产版本 |
+| 安装依赖 | `pnpm install --frozen-lockfile` | 安装依赖（pnpm 9.15.0） |
+| ESLint | `pnpm lint` | 代码风格检查 |
+| API 单一真源 | `node scripts/sync-apis.mjs --check` | 校验 apis.json 前后台一致 |
+| 测试 | `pnpm test` | 运行单元测试 |
+| 构建 | `pnpm build` | 构建生产版本 |
 
 ### 12.3 部署流程
 ```
@@ -718,9 +721,9 @@ main 分支更新 → GitHub Actions → 构建 → 部署
 ### 12.4 部署命令
 | 命令 | 用途 |
 |-----|------|
-| `npm run build` | 构建前端 |
-| `npm run build:functions` | 构建 Cloud Functions |
-| `npm run deploy:functions` | 部署 Cloud Functions |
+| `pnpm build` | 构建前端 |
+| `supabase functions deploy monitor --no-verify-jwt` | 部署后台 Edge Function |
+| `node scripts/sync-apis.mjs --check` | 校验 API 单一真源 |
 
 ## 13. 测试策略
 
@@ -731,7 +734,7 @@ main 分支更新 → GitHub Actions → 构建 → 部署
 | 组件测试 | 测试组件交互 | React Testing Library |
 
 ### 13.2 测试覆盖
-- 目标覆盖率：≥80%
+- 覆盖率门禁：statements / functions / lines ≥ 70%，branches ≥ 55%（jest.config.cjs）
 - 重点测试：监控逻辑、数据处理、错误处理
 
 ### 13.3 测试文件命名
@@ -740,7 +743,7 @@ main 分支更新 → GitHub Actions → 构建 → 部署
 
 ## 14. 国际化 (i18n)
 
-### 15.1 支持的语言
+### 14.1 支持的语言
 | 语言代码 | 语言名称 | 本地名称 |
 |---------|---------|--------|
 | en | English | English |
@@ -786,7 +789,7 @@ import { t, setLocale, getLocale, initLocale } from '@/lib/i18n';
 const title = t('dashboard.title');
 
 // 设置语言（持久化至 localStorage）
-persistLocale('es');
+setLocale('es');
 
 // 初始化（自动检测）
 initLocale();
@@ -846,13 +849,17 @@ const channel = supabase
   - `NEXT_PUBLIC_SUPABASE_URL`: Supabase 项目 URL
   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`: Supabase Anon Key（前端使用）
   - `SUPABASE_SERVICE_ROLE_KEY`: Supabase Service Role Key（服务端使用）
-- 数据库迁移：运行 `supabase/schema.sql` 中的 SQL 脚本
+- 数据库迁移：运行 `supabase/schema.sql`；如需后台持久化，再执行 `supabase/cron.sql` 并部署 Edge Function `monitor`
 
 ### 15.2 启动命令
 | 命令 | 用途 |
 |-----|------|
-| `npm run dev` | 开发模式 |
-| `npm run build` | 构建生产版本 |
-| `npm start` | 启动生产服务器 |
-| `npm test` | 运行测试 |
-| `npm run lint` | 代码检查 |
+| `pnpm dev` | 开发模式 |
+| `pnpm build` | 构建生产版本 |
+| `pnpm start` | 启动生产服务器（`next start`，静态导出场景请用静态托管） |
+| `pnpm test` | 运行测试 |
+| `pnpm lint` | 代码检查 |
+| `pnpm sync:apis` | 同步 apis.json 单一真源 |
+| `pnpm preflight` | 仅校验一致性（build 内置） |
+| `pnpm test:watch` | 监听模式测试 |
+| `pnpm clean` | next clean |

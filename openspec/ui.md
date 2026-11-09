@@ -1,4 +1,13 @@
-# UI 组件规范文档 (v2.10.35 - Dark Indigo Theme)
+# UI 组件规范文档 (v2.10.35 - 浅色/深色双主题)
+
+> 适用版本：v2.10.35 · 最近校对：2026-11-09 · 真源：`app/`、`supabase/` 与 `package.json`
+>
+> **代码对齐要点（下文旧表述与本表冲突时，以本表及源码为准）**：
+> - 主题为浅色/深色双主题（`:root`/`.light` = `#f8fafc`，`.dark` = `#0a0a0f`），深色档使用 Indigo `#6366f1` + Violet `#8b5cf6`；不是纯 `#0f0f14` 深色。
+> - 图表为静态导入的 Recharts 面积图（无 `ssr:false` / `ChartSkeleton` / `hiddenSeries` / `ReferenceLine`），图例为前 8 个 API 静态 Badge，Tooltip 使用 inline `contentStyle`。
+> - `React.memo` 使用浅引用/逐项比较（明确避免全量 `JSON.stringify`）；`animationDuration={1200}`；`motion-safe:` 已适配 `prefers-reduced-motion`。
+> - `GeoOptInDialog` 为自定义 `role="dialog"` 弹层，授权后调用 `enableGeoLocation()` 并刷新；主题切换按钮在 `DashboardHeader`，`ThemeProvider` 仅透传 props。
+> - `StructuredData` 由 `app/layout.tsx` 注入；`app/page.tsx` 仅用 `Suspense` 包裹 `DashboardClient`。16 语言已全部落地；末尾版本历史止于 v2.7.0，属历史记录。
 
 ## 1. 设计原则
 
@@ -8,7 +17,7 @@
 
 | 原则 | 说明 |
 |-----|------|
-| **深色沉浸** | 以 `#0f0f14` 为基底，紫色/靛蓝渐变作为氛围光，营造科技感与专注感 |
+| **深色沉浸** | 浅色 `#f8fafc` / 深色 `#0a0a0f` 双主题，靛蓝与紫罗兰渐变作为氛围光 |
 | **数据优先** | 图表、数字、状态指示器为核心视觉元素，留白辅助层级区分 |
 | **清晰层级** | 通过边框、阴影、颜色透明度建立视觉层级关系 |
 | **状态指示** | 所有动态数据必须有明确的在线/降级/离线三态视觉标识 |
@@ -23,7 +32,7 @@
 - **样式框架**: Tailwind CSS 4.1.11（`@theme` 块定义 CSS 变量桥接）
 - **组件库**: shadcn/ui（基于 Radix UI primitives）
 - **图标库**: Lucide React
-- **图表库**: Recharts 3.8.0 面积图（`app/components/LatencyHistoryChart.tsx`），动态导入 + ChartSkeleton 骨架屏
+- **图表库**: Recharts 3.8.0 面积图（`app/components/LatencyHistoryChart.tsx`），静态导入（无独立图表骨架屏）
 - **颜色系统**: 深色紫色/靛蓝主题，CSS 变量驱动（详见 [design-system.md](design-system.md) 和 §5.1）
 - **动画**: 自定义 keyframes（fade-in-up / spin-once / shimmer 等），遵循 `prefers-reduced-motion` 规范
 
@@ -84,9 +93,9 @@ ApiStatusGrid
 
 ### 2.3 LatencyHistoryChart
 
-**功能**：展示历史延迟趋势（基于 Recharts 面积图，动态导入 + ChartSkeleton 骨架屏）
+**功能**：展示历史延迟趋势（基于 Recharts 面积图，静态导入（无独立图表骨架屏））
 
-**Props**（React 版本规划）：
+**Props**（当前 React 实现）：
 ```typescript
 interface LatencyHistoryChartProps {
   chartData: ChartDataPoint[];
@@ -101,9 +110,9 @@ interface LatencyHistoryChartProps {
 - 固定响应式高度：`h-[320px] md:h-[420px]`（Recharts `ResponsiveContainer`，自适应宽度）
 - 网格线透明度 0.06，仅水平方向
 - 每条 API 曲线：独立纯色 + 8% 不透明度区域填充（area fill）
-- 阈值线（1500ms）虚线标注
-- 可交互：图例可点击切换系列显隐（`hiddenSeries`）、hover 显示跟随鼠标的 tooltip（多系列数值 + 垂直扫描线）
-- Tooltip 样式：`bg-popover border-border rounded-xl`，使用 CSS 变量，带 `chart-tooltip` 过渡动画
+- 当前未实现阈值线（无 ReferenceLine）
+- 可交互：前 8 个 API 静态图例 Badge（不可点击切换）、hover 显示跟随鼠标的 tooltip（多系列数值 + 垂直扫描线）
+- Tooltip 样式：`bg-popover border-border rounded-xl`，使用 CSS 变量，带 `inline contentStyle` 过渡动画
 - 时间范围 1H / 6H / 24H 切换（与 `app/components/DashboardClient.tsx` 的 `TIME_RANGES` 一致），曲线形态各异（小时内密集波动 / 6 小时阶段性 / 24 小时昼夜波动），末点锚定当前实时延迟
 - 历史数据上限：内存保留最近 100 条延迟记录（`app/store/api.ts` 的 `addHistoryEntry` 以 `.slice(-100)` 截断）
 
@@ -250,7 +259,7 @@ DashboardClient
 **Props**：无
 
 **设计特点**：
-- shadcn Dialog 组件
+- 自定义 `role="dialog"` 弹层
 - 用户同意后调用 `useGeoStore` 的 fetchGeoLocation
 - localStorage 持久化用户选择（geoOptIn）
 
@@ -265,7 +274,7 @@ DashboardClient
 - 包含监控服务的结构化数据（名称、描述、URL、运营范围）
 - 提升搜索引擎优化效果
 
-### 2.13 ChartSkeleton
+### 2.13 ChartSkeleton（历史组件，当前无引用）
 
 **功能**：图表骨架屏加载组件，数据加载时显示占位动画
 
@@ -278,7 +287,7 @@ DashboardClient
 
 ### 2.14 ThemeProvider
 
-**功能**：管理浅色/深色双主题，基于 next-themes（`attribute="class"`，`defaultTheme="system"`，`enableSystem`），顶栏提供 Sun/Moon 切换按钮，主题偏好持久化到 localStorage
+**功能**：管理浅色/深色双主题，基于 next-themes（`attribute="class"`，`defaultTheme="system"`，`enableSystem`），DashboardHeader 顶栏提供 Sun/Moon 切换按钮（ThemeProvider 仅透传 props），主题偏好持久化到 localStorage
 
 **Props**：继承 `NextThemesProvider` 的所有 props
 
@@ -587,44 +596,29 @@ flex flex-col items-center gap-2 py-8 text-center
 
 ## 5. 样式规范
 
-### 5.1 颜色系统（Dark Indigo Theme）
+### 5.1 颜色系统（浅色 / 深色双主题）
 
-#### CSS 变量（在 `app/style.css` 的 `:root` 中定义）
+#### CSS 变量（定义于 `app/style.css` 的 `:root` / `.light` 与 `.dark`）
 
-| Token | 值 | 用途 |
-|-------|----|------|
-| `--background` | `#0f0f14` | 主页面背景 |
-| `--foreground` | `#e4e4e7` | 主文字颜色 |
-| `--card` | `#1a1a24` | 卡片背景 |
-| `--card-foreground` | `#e4e4e7` | 卡片文字 |
-| `--popover` | `#1a1a24` | 弹出层背景 |
-| `--primary` | `#6366f1` | 主色（靛蓝） |
-| `--primary-foreground` | `#ffffff` | 主色上的文字 |
-| `--secondary` | `#252532` | 次要背景 |
-| `--secondary-foreground` | `#e4e4e7` | 次要背景上的文字 |
-| `--muted` | `#252532` | 弱化背景 |
-| `--muted-foreground` | `#71717a` | 次要/辅助文字 |
-| `--accent` | `#8b5cf6` | 强调色（紫色） |
-| `--accent-foreground` | `#ffffff` | 强调色上的文字 |
-| `--destructive` | `#ef4444` | 错误/离线状态 |
-| `--destructive-foreground` | `#ffffff` | 错误色上的文字 |
-| `--border` | `#2a2a3a` | 边框 |
-| `--input` | `#2a2a3a` | 输入框背景 |
-| `--ring` | `#6366f1` | 焦点环 |
-| `--success` | `#22c55e` | 成功/在线状态（语义色） |
-| `--warning` | `#f59e0b` | 警告/降级状态（语义色） |
-| `--info` | `#3b82f6` | 信息色（语义色） |
+| Token | 浅色（`:root` / `.light`） | 深色（`.dark`） | 用途 |
+|-------|---------------------------|-----------------|------|
+| `--background` | `#f8fafc` | `#0a0a0f` | 主页面背景 |
+| `--foreground` | `#0f172a` | `#f4f4f5` | 主文字颜色 |
+| `--card` / `--popover` | `#ffffff` | `#13131a` | 卡片 / 弹出层背景 |
+| `--card-foreground` / `--popover-foreground` | `#0f172a` | `#f4f4f5` | 卡片 / 弹出层文字 |
+| `--primary` | `#6366f1` | `#818cf8` | 主色（靛蓝） |
+| `--primary-foreground` | `#ffffff` | `#0a0a0f` | 主色上的文字 |
+| `--secondary` / `--muted` | `#e2e8f0` | `#1e1e28` | 次要 / 弱化背景 |
+| `--secondary-foreground` | `#0f172a` | `#f4f4f5` | 次要背景上的文字 |
+| `--muted-foreground` | `#64748b` | `#71717a` | 辅助文字 |
+| `--accent` | `#8b5cf6` | `#a78bfa` | 强调色（紫色） |
+| `--accent-foreground` | `#ffffff` | `#0a0a0f` | 强调色上的文字 |
+| `--destructive` | `#ef4444` | `#f87171` | 错误 / 离线状态 |
+| `--destructive-foreground` | `#ffffff` | `#0a0a0f` | 错误色上的文字 |
+| `--border` / `--input` | `#e2e8f0` | `#242430` | 边框 / 输入框背景 |
+| `--ring` | `#6366f1` | `#818cf8` | 焦点环 |
 
-#### 深色模式变体（`.dark` class）
-
-| Token | 值 |
-|-------|----|
-| `--background` | `#0a0a0f`（更深沉） |
-| `--primary` | `#818cf8`（更亮的靛蓝） |
-| `--card` | `#13131a` |
-| `--secondary` / `--muted` | `#1e1e28` |
-| `--border` / `--input` | `#242430` |
-| `--destructive` | `#f87171` |
+`@theme` 中的语义色不随主题切换：`--color-success` `#22c55e`、`--color-warning` `#f59e0b`、`--color-info` `#3b82f6`、`--color-error` `#ef4444`（另有 `--color-*-10` alpha 变体）。主题由 `next-themes` 的 `defaultTheme="system"` / `enableSystem` 切换，深色档沿用 Dark Indigo 主色。
 
 #### Tailwind 桥接（`@theme` block）
 
@@ -641,7 +635,7 @@ CSS 变量通过 Tailwind 4.1 的 `@theme` 语法注册为 Tailwind token，例�
 
 #### 背景氛围光（Radial Gradient）
 
-body 背景在纯色 `#0f0f14` 基础上叠加三层径向渐变：
+body 背景使用 `var(--background)` 并叠加三层径向渐变：
 ```
 radial-gradient(circle at 20% 80%, rgba(99, 102, 241, 0.05) 0%, transparent 50%)
 radial-gradient(circle at 80% 20%, rgba(139, 92, 246, 0.05) 0%, transparent 50%)
@@ -803,7 +797,7 @@ stagger-8 → 0.40s
 | 主题切换（背景色） | 500ms | `cubic-bezier(0.4, 0, 0.2, 1)` | body transition |
 | 颜色过渡（按钮 hover） | 150-300ms | `ease-out` | `transition-colors` |
 | 卡片位移 hover | 350-400ms | `cubic-bezier(0.23, 1, 0.32, 1)` | card-hover-lift |
-| 入场动画 | 400-800ms | `cubic-bezier(0.25, 0.1, 0.25, 1)` | fade-in-up（原型统一使用 fade-in-up 交错，无 slide-in-right） |
+| 入场动画 | 400-800ms | `cubic-bezier(0.25, 0.1, 0.25, 1)` | fade-in-up（原型统一使用 fade-in-up 交错，含 slide-in-right） |
 | 图表动画 | 实时重绘 + 0.4-0.5s 透明度过渡 | Recharts `animationDuration` | 区域填充淡入、Tooltip 跟随、hover 高亮 |
 | 缩放反馈 | 200ms | `ease-out` | apple-button:active scale(0.96) |
 
@@ -813,7 +807,7 @@ stagger-8 → 0.40s
 2. **时长限制**：单体动画 ≤ 800ms，动画总时长（交错合计）≤ 1500ms
 3. **动效为语义服务**：脉冲动画仅用于"需要关注"的状态（离线/告警），健康状态保持静默以减少视觉噪音
 4. **硬件加速**：使用 `transform` / `opacity` 触发 GPU 合成，避免 `width` / `top` 等布局属性动画
-5. **可配置**：尊重用户 `prefers-reduced-motion`（后续可增强）
+5. **可配置**：尊重用户 `prefers-reduced-motion`（已通过 motion-safe: 支持）
 
 ## 7. 响应式规范
 
@@ -877,7 +871,7 @@ stagger-8 → 0.40s
 
 ```
 <html lang>
-└── <body> (bg: #0f0f14 + 三层径向渐变)
+└── <body> (bg: var(--background) + 三层径向渐变)
     ├── ThemeProvider (next-themes)
     ├── StructuredData (SEO - Server Component)
     └── DashboardClient (Client Component)
@@ -898,7 +892,7 @@ stagger-8 → 0.40s
         │   │   └── ApiStatusGrid (扁平卡片网格，provider 透传至 ApiStatusCard)
         │   └── Section: Latency History Chart
         │       ├── Section Header (标题 + 描述)
-        │       └── LatencyHistoryChart / ChartSkeleton
+        │       └── LatencyHistoryChart（静态导入，无独立骨架屏）
         └── DashboardFooter
             ├── Separator
             └── Grid: Global Coverage / UI Tech Stack / Data Integrity
@@ -937,9 +931,9 @@ stagger-8 → 0.40s
 - 📈 新增 ProgressBar 进度条组件（渐变 + shimmer + React.memo）
 - 🗺️ 新增 GeoOptInDialog 地理位置授权对话框
 - 🔍 新增 StructuredData SEO 结构化数据组件
-- 💀 新增 ChartSkeleton 骨架屏加载组件
+- 💀 新增 ChartSkeleton 骨架屏加载组件（历史记录；当前实现无引用）
 - ⚡ 新增 StatusGrid 兼容层（向后兼容 ApiStatusGrid）
-- 🌍 国际化支持（useI18n hook）；原型已实现 中文/English 2 种，规划扩展至 16 语言
+- 🌍 国际化支持（useI18n hook）；原型已实现 中文/English 2 种，已支持 16 语言
 - 🏪 5 个 Zustand Store（api/auth/alerts/geo/error）
 - 🔒 Supabase 后端集成（Auth + PostgreSQL + Realtime）
 - 📱 响应式优化（移动端 1 列 → 桌面端 4 列）

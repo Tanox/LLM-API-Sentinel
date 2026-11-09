@@ -1,11 +1,19 @@
 # LLM API Sentinel 设计系统 (v2.10.35)
 
+> 适用版本：v2.10.35 · 最近校对：2026-11-09 · 真源：`app/`、`supabase/` 与 `package.json`
+>
+> **代码对齐要点（下文旧表述与本表冲突时，以本表及源码为准）**：
+> - 主题为浅色/深色双主题：`:root` / `.light` 浅色（`#f8fafc`）、`.dark` 深色（`#0a0a0f`），深色档使用 Indigo/Violet 主色；`next-themes` 默认 `system`。
+> - `app/style.css` 的 `--font-sans` 以 `"Inter"` 开头；`prototype/assets/styles.css` 的字体栈细节与 React 应用并不完全一致，以 `app/style.css` 为准。
+> - app 实际 keyframes：`pulse-gentle` / `fade-in-up` / `slide-in-right` / `scale-in-gentle` / `shimmer` / `float` / `glow-pulse` / `gradient-shift`；无 `spin-once` 与 `status-dot-*`（原型侧才有）。
+> - Recharts 入场动画 `animationDuration={1200}`；文中 `file:///workspace/...` 绝对路径一律按仓库相对路径理解。
+
 ## 1. 设计哲学
 
 ### 1.1 核心理念
 - **极简主义**: 去除一切非必要元素，每个像素都有其存在的意义
 - **功能优先**: 数据可视化和状态监控是核心，UI 服务于信息传递
-- **深度沉浸**: Dark Indigo 暗色主题营造专注的监控环境
+- **深度沉浸**: 浅色/深色双主题（默认跟随系统），深色档以 Dark Indigo 营造专注的监控环境
 
 ### 1.2 美学方向
 - **风格**: 极简工业风 + 数据仪表盘美学
@@ -80,11 +88,12 @@ radial-gradient(circle at 40% 40%, rgba(59, 130, 246, 0.03) 0%, transparent 40%)
 ## 3. 字体系统
 
 ### 3.1 字体选择
-- **Sans (正文/标题)**: `system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif`（通过 `app/style.css` 与 `prototype/assets/styles.css` 的 `@theme` 定义变量 `--font-sans`，**系统字体栈，零外网依赖，支持离线预览**）
-- **Mono (数据/代码)**: `ui-monospace, SFMono-Regular, "JetBrains Mono", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace`（变量 `--font-mono`）
+- **Sans (正文/标题)**: `app/style.css` 的 `--font-sans` = `"Inter", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Microsoft YaHei", sans-serif`；`prototype/assets/styles.css` 以 `system-ui` 开头（原型与应用语义变量对齐，字体栈细节以 `app/style.css` 为准）
+- **Mono (数据/代码)**: `--font-mono` = `"JetBrains Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace`
+- **Serif (展示性文字)**: `--font-serif` = `Georgia, "Times New Roman", "Songti SC", "SimSun", "Noto Serif CJK SC", serif`
 - **Fallback**: `system-ui, -apple-system, sans-serif`
 
-> 字体策略统一为 CSS 变量系统字体栈，**不依赖 `next/font/google` 构建期拉取**，规避无外网环境的构建失败，且原型可完全离线打开预览。原型与代码（React 应用）使用完全一致的字体变量定义，保证设计 token 对齐。
+> 字体策略为 CSS 变量系统字体栈，**不依赖 `next/font/google` 构建期拉取**，规避无外网环境的构建失败，原型可完全离线打开预览。
 
 ### 3.2 字号层级 (Tailwind 体系)
 | 级别 | Tailwind class | 像素 | 用途 |
@@ -178,15 +187,18 @@ radial-gradient(circle at 40% 40%, rgba(59, 130, 246, 0.03) 0%, transparent 40%)
 ## 7. 动效系统
 
 ### 7.1 核心动画 keyframes
-定义于 [app/style.css](file:///workspace/app/style.css) 与 [prototype/assets/styles.css](file:///workspace/prototype/assets/styles.css)：
+定义于 [app/style.css](../app/style.css) 与 [prototype/assets/styles.css](../prototype/assets/styles.css)：
 
 | 动画名 | 用途 | 时长 |
 |-------|------|------|
 | `fade-in-up`（`animate-fade-in-up`） | 卡片入场（淡入上移 30px） | 400-800ms cubic-bezier(0.25,0.1,0.25,1) |
-| `spin-once`（`animate-spin-once`） | 刷新按钮单次旋转 | 0.6s |
-| `shimmer`（`shimmer-overlay` / `skeleton-shimmer`） | ProgressBar 扫光 / 骨架屏占位 | 1.6-2s infinite |
-| `pulse`（原生） | StatusDot / 告警点柔和脉冲 | 2s ease-in-out infinite |
-| `status-dot-*` 光晕 | 在线/降级/离线状态点的外发光 | 2s ease-in-out infinite |
+| `slide-in-right` / `scale-in-gentle` | 卡片右侧滑入 / 轻缩放入场 | 400-600ms |
+| `shimmer`（`shimmer-overlay` / `skeleton-shimmer`） | ProgressBar 扫光 / 骨架屏占位 | 1.2-2s infinite |
+| `pulse-gentle` / `glow-pulse` | 状态点呼吸 / 强调元素光晕 | 2s ease-in-out infinite |
+| `float` / `gradient-shift` | 装饰浮动 / 渐变位移 | 3-6s infinite |
+| `pulse`（Tailwind 原生） | 骨架屏与状态点脉冲 | 2s ease-in-out infinite |
+
+> `app/style.css` 实际 keyframes 为 `pulse-gentle` / `fade-in-up` / `slide-in-right` / `scale-in-gentle` / `shimmer` / `float` / `glow-pulse` / `gradient-shift`；`spin-once` 与 `status-dot-*` 仅存在于原型 `prototype/assets/styles.css`，React 组件未使用。
 
 ### 7.2 交错动画 (Stagger)
 循环渲染的卡片根据 index 设置 `animationDelay`，步长约 0.08s，营造节奏入场感。
@@ -197,7 +209,7 @@ radial-gradient(circle at 40% 40%, rgba(59, 130, 246, 0.03) 0%, transparent 40%)
 | 颜色过渡（按钮 hover） | 150-300ms | `ease-out` |
 | 卡片位移 hover（card-hover-lift） | 400ms | `cubic-bezier(0.23, 1, 0.32, 1)` |
 | 入场动画 | 400-800ms | `cubic-bezier(0.25, 0.1, 0.25, 1)` |
-| 图表动画 | 实时重绘 + 0.4-0.5s 透明度过渡 | Recharts `animationDuration`，含区域填充淡入、Tooltip 跟随、hover 高亮 |
+| 图表入场动画 | 1200ms | Recharts `animationDuration={1200}`（区域填充淡入、Tooltip 跟随、hover 高亮） |
 
 ### 7.4 动画使用原则
 1. **克制入场**：入场动画仅首次渲染触发，滚动/筛选不重复触发
@@ -249,8 +261,8 @@ radial-gradient(circle at 40% 40%, rgba(59, 130, 246, 0.03) 0%, transparent 40%)
 
 ## 10. 文件位置
 
-- 样式变量 + 主题定义: [app/style.css](file:///workspace/app/style.css)
-- 全局基础样式: [app/globals.css](file:///workspace/app/globals.css)
-- shadcn 配置: [components.json](file:///workspace/components.json)
-- UI 组件: [app/components/ui/](file:///workspace/app/components/ui/)
-- 业务组件: [app/components/](file:///workspace/app/components/)
+- 样式变量 + 主题定义: [app/style.css](../app/style.css)
+- 全局基础样式: [app/globals.css](../app/globals.css)
+- shadcn 配置: [components.json](../components.json)
+- UI 组件: [app/components/ui/](../app/components/ui/)
+- 业务组件: [app/components/](../app/components/)

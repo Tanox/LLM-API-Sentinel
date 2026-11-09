@@ -1,5 +1,14 @@
 # 逻辑与服务文档
 
+> 适用版本：v2.10.35 · 最近校对：2026-11-09 · 真源：`app/`、`supabase/` 与 `package.json`
+>
+> **代码对齐要点（下文旧表述与本表冲突时，以本表及源码为准）**：
+> - 默认后台调度为 `supabase/cron.sql` 的 pg_cron（每 5 分钟）→ Edge Function `monitor`；`examples/self-host-server.ts` 的 `setInterval` 属于可选自建模式。
+> - 缓存写入为 `persistSingleCache(apiId, entry)`（增量持久化），累计指标经 `metrics-storage.ts` 写入 localStorage 跨刷新累加，不是「重启即清零」。
+> - `calculateRealMetrics()` 的 `totalChecks` 默认值为 1；`metrics.ts` 另有查询 `status_history` 的 `calculateMetrics()`。
+> - `app/lib/utils.ts` 实际导出 `cn` / `getApiColor` / `getStatusColor` / `getStatusPulseColor` / `getLatencyColor(latency, threshold, isOffline)` / `getProgressBarVariant`；`formatTime()`、`formatRelativeTime()`、`getStatusText()`、`getLatencyLevel()` 及返回 Hex 的旧示例均未实现。
+> - Supabase 未配置或加载失败时保持空态并主动真实探测，不注入模拟数据；hook 使用 `createAlertForResult` 与 `supabase-mapping.ts`。
+
 ## 1. 核心服务架构
 
 LLM API Sentinel 的核心逻辑由多个服务和钩子组成，负责处理监控、数据管理、认证等功能。
@@ -286,7 +295,7 @@ export function setCache(apiId: string, result: ApiCheckResult): void {
     expiry
   };
   
-  saveCacheToStorage(memoryCache);
+  persistSingleCache(apiId, entry);
 }
 
 // 初始化缓存
@@ -350,7 +359,7 @@ function calculateRealMetrics(
   apiId: string,
   currentLatency: number,
   isOnline: boolean,
-  totalChecks: number = 100
+  totalChecks: number = 1
 ): { 
   errorRate: number; 
   availability: number; 
@@ -546,7 +555,7 @@ export function useApiMonitor() {
   const syncToSupabase = useCallback(async (results: ApiStatus[]) => { ... }, []);
 
   // 智能告警检查
-  const checkAndCreateAlert = useCallback(async (result: ApiStatus) => {
+  const createAlertForResult = useCallback(async (result: ApiStatus) => {
     // 检查是否已有未解决的同类告警
     // 根据状态创建 downtime 或 latency 告警
     // 延迟告警根据严重程度分级：low/medium/high
@@ -568,7 +577,7 @@ export function useApiMonitor() {
       addHistoryEntry(historyEntries);
 
       // 并行执行告警检查
-      Promise.all(results.map(result => checkAndCreateAlert(result)));
+      Promise.all(results.map(result => createAlertForResult(result)));
 
       // 空闲时同步到 Supabase
       requestIdleCallback(() => syncToSupabase(results));
@@ -588,7 +597,7 @@ export function useApiMonitor() {
 - 本地优先：先在本地执行检查，异步同步到 Supabase
 - 智能告警：自动检测异常并创建告警，避免重复
 - 性能优化：startTransition + requestIdleCallback 确保 UI 流畅
-- 降级策略：Supabase 不可用时使用模拟数据
+- 降级策略：Supabase 未配置或加载失败时保持空态并主动真实探测
 
 ### 6.3 useAuth
 
@@ -773,7 +782,7 @@ addHistoryEntry: (entryOrEntries) => set((state) => {
 
 ### 8.1 任务调度
 
-后台监控任务在 Express 服务器 (examples/self-host-server.ts) 中运行，使用 setInterval 定时执行：
+默认后台调度为 supabase/cron.sql 的 pg_cron（每 5 分钟）→ Edge Function POST /monitor；可选的 examples/self-host-server.ts 自建模式才使用 setInterval：
 
 ```typescript
 // examples/self-host-server.ts
@@ -870,7 +879,7 @@ export function formatRelativeTime(date: Date | string): string {
 }
 ```
 
-### 10.2 状态颜色映射
+### 9.2 状态颜色映射
 
 ```typescript
 export function getStatusColor(status: ApiStatus['status']): string {

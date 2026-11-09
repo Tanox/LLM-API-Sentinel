@@ -1,5 +1,6 @@
 # Change: 对齐 openspec 规范与 app 代码实现
 
+> **历史归档**：本提案保留提出时的版本号、路径与命令（如 v2.5.0 / `.trae/rules/` / `/workspace/` / npm 命令），仅作历史记录，不代表 v2.10.35 的当前状态。当前事实以双语 README、`docs/` 与 `openspec/*.md` 顶部的「代码对齐要点」为准。
 **Status**: Approved
 **Date**: 2026-08-16
 **Version**: 2.10.0

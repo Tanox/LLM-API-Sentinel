@@ -51,9 +51,10 @@ an individual is officially representing the community in public spaces.
 ## Enforcement
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
-reported to the community leaders responsible for enforcement via the project's
-security contact (see [SECURITY.md](SECURITY.md)). All complaints will be reviewed
-and investigated promptly and fairly.
+reported to the community leaders responsible for enforcement through the
+private reporting flow described in [SECURITY.md](SECURITY.md) (GitHub Private
+Vulnerability Reporting or Discussions). All complaints will be reviewed and
+investigated promptly and fairly.
 
 ## Attribution
 

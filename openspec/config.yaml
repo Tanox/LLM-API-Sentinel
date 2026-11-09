@@ -2,15 +2,19 @@ schema: spec-driven
 
 # Project context (shown to AI when creating artifacts)
 context: |
-  Tech stack: Next.js 14.2 (App Router, Static Export), TypeScript 5.9, Tailwind CSS 4.1, shadcn/ui, Zustand, Recharts, Supabase (PostgreSQL + Auth + Realtime), Express 5.2
-  Architecture: Static frontend + Supabase backend, no custom API routes
+  Tech stack: Next.js ^14.2.13 (App Router, static export to out/), TypeScript 5.9.3, Tailwind CSS 4.1.11, shadcn/ui-style components, Zustand ^5.0.12, Recharts ^3.8.0, Supabase (@supabase/supabase-js ^2.107.0: PostgreSQL + Auth + Realtime + Cron/Edge Functions); optional Express ^5.2.1 + Helmet ^8.3.0 only in examples/self-host-server.ts
+  Architecture: static frontend + Supabase backend, no Next.js API routes; browser-side probing every 5 minutes via useApiMonitor; Realtime subscription only for alerts; optional background persistence via supabase/cron.sql (pg_cron) -> Edge Function POST /monitor
+  Monitoring targets: 29 APIs; single source app/constants/apis.json, mirrored by scripts/sync-apis.mjs to supabase/functions/monitor/apis.json (pnpm sync:apis / pnpm preflight)
   Conventions: PascalCase components, camelCase hooks/utils, SCREAMING_SNAKE_CASE constants, kebab-case CSS
-  Commits: conventional commits (feat/fix/docs/refactor/style/test/chore/perf)
-  Testing: 80%+ coverage required, run npm test before commit
-  Security: no secrets in code/logs, validate inputs, XSS protection, HTTPS in production
-  i18n: 16 languages supported (en/zh-cn/zh-tw/ar/cs/es/hi/id/it/nl/pl/sv/th/tr/ru/vi)
+  Commits: conventional commits (feat/fix/docs/refactor/style/test/chore/perf/ci/revert)
+  Package manager: pnpm 9.15.0 (preinstall only-allow + .npmrc); CI uses Node.js 22 and pnpm install --frozen-lockfile
+  Testing: Jest ^30.3.0; jest.config.cjs thresholds statements/functions/lines 70%, branches 55%; run pnpm test and pnpm preflight before commit; CI also runs pnpm lint and pnpm build
+  Security: no secrets in code/logs, hand-written whitelist validation (no zod), HTTPS in production, RLS on all tables, service_role key only server-side
+  Themes: light/dark dual theme via CSS variables in app/style.css; dark tier uses indigo #6366f1 + violet #8b5cf6; defaultTheme="system"
+  i18n: 16 languages supported (en/zh-cn/zh-tw/ar/cs/es/hi/id/it/nl/pl/sv/th/tr/ru/vi); <html lang> currently fixed to en
   Error handling: use unified logError instead of console.error/console.warn
-  Version: v2.10.24 (SemVer)
+  Specs: openspec/specs/ is currently empty; normative docs are the flat *.md files in openspec/; changes/ holds historical proposals
+  Version: 2.10.35 (SemVer; single source of truth is package.json version)
 
 # Per-artifact rules
 rules:
@@ -23,11 +27,12 @@ rules:
     - Include verification steps for each task
     - Reference file paths relative to project root
   design:
-    - Follow Dark Indigo theme (#6366f1 + #8b5cf6)
+    - Follow light/dark dual theme CSS variables in app/style.css (dark tier uses indigo #6366f1 + violet #8b5cf6)
     - Ensure WCAG AA accessibility compliance
-    - Support responsive 1/2/3/4 column grids
+    - Support responsive grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4
   code:
     - Add Chinese comments for critical logic
-    - Extract Chinese text to i18n files
+    - Extract Chinese text to i18n files (all 16 locales)
     - Use TypeScript strict mode, no implicit any
     - Handle Promise rejections with meaningful errors
+    - Edit only app/constants/apis.json for monitoring targets, then run pnpm sync:apis

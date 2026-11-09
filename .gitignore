@@ -21,3 +21,15 @@ eslint2.json
 
 # 编辑器/工具本地缓存
 .trae/
+
+# 会话级临时文件与产物目录（不入库）
+.tmp/
+.tmp-*
+*_tmp*
+reports/
+playwright-report/
+test-results/
+*.txt
+*.out
+audit-*.json
+*-result.json

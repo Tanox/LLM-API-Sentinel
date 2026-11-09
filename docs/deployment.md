@@ -1,64 +1,85 @@
 # 部署指南 (Deployment)
 
-LLM API Sentinel 默认以 **静态导出** 方式构建（由 `next.config.mjs` 的 `output: 'export'` 控制），产物输出到 `out/` 目录。本文档覆盖三种部署路径。
+> 适用版本：v2.10.35 · 最近校对：2026-11-09
+
+LLM API Sentinel 默认以 **静态导出** 方式构建（`next.config.mjs` 的 `output: 'export'`），产物输出到 `out/`。本文档覆盖静态托管、可选自建模式与后台监控三条路径。
 
 ## 1. 通用前置条件
 
-1. Node.js 18+，包管理器使用 `pnpm`。
-2. 配置 Supabase 项目并运行 `supabase/schema.sql`。
-3. 准备 `.env.local`（参见 [env.md](env.md)）。
-4. 在 Supabase Auth 中启用 Google OAuth，并将部署后的回调地址加入白名单。
+1. Node.js 22（CI 固定值；`package.json` 未声明 `engines.node`，本地 Node 18+ 一般可用）；包管理器必须为 **pnpm 9.15.0** —— `preinstall`（`only-allow`）与 `.npmrc` 会拒绝 `npm` / `yarn` 安装。
+2. 配置 Supabase 项目并运行 `supabase/schema.sql`（建表 + RLS）。
+3. 准备 `.env.local`，至少包含 3 个 Supabase 变量，可选变量见 [env.md](env.md)。
+4. 如需登录功能，在 Supabase Auth 中启用 Google OAuth，并将部署后的回调地址加入白名单（查看状态与手动探测不需要登录）。
+5. CI 使用 `pnpm install --frozen-lockfile`，因此仓库必须包含与 `package.json` 一致的 `pnpm-lock.yaml`。
 
 ## 2. 静态托管部署（推荐）
 
 ### 2.1 Vercel
 
-项目根已包含 `vercel.json`（构建命令 `pnpm build`，输出目录 `out/`）。
+项目根已包含 `vercel.json`（`framework: nextjs`、构建 `pnpm build`、输出目录 `out/`、SPA 回退 rewrite 到 `/index.html`、安全响应头与 `_next/static` 长缓存）。
 
-- 在 Vercel 导入仓库，环境变量填入 `.env.local` 中的三个变量。
-- 触发部署即可。所有请求重写到 `index.html` 以支持 SPA 路由，并自动附加安全响应头。
+- 导入仓库后在 Vercel 控制台填入环境变量（至少 `NEXT_PUBLIC_SUPABASE_URL`、`NEXT_PUBLIC_SUPABASE_ANON_KEY`；`SUPABASE_SERVICE_ROLE_KEY` 仅服务端使用）。
+- 触发部署即可。
 
 ### 2.2 腾讯云 EdgeOne Pages
 
-项目根已包含 `edgeone.config.js`（构建命令 `pnpm build`，输出目录 `out/`）。
+项目根已包含 `edgeone.json`（`installCommand: pnpm install`、`buildCommand: pnpm build`、`outputDirectory: out`）与 `edgeone.config.js`（路由重写、全局安全头、JS/CSS/HTML 缓存策略）。
 
-- 在 EdgeOne Pages 关联仓库，使用上述配置。
-- 部署后通过 EdgeOne 提供的域名访问。
+- 关联仓库后按上述配置构建，产物为 `out/`。
+- EdgeOne 的 HTML 缓存头为 `public, max-age=0, must-revalidate`。
 
 ### 2.3 Netlify
 
-- 构建命令：`pnpm build`
-- 发布目录：`out`
-- 在 `netlify.toml` 或控制台中将 SPA 回退设为 `index.html`。
+- 构建命令：`pnpm build`；发布目录：`out`。
+- 仓库未提供 `netlify.toml`，请在控制台将回退规则设为 `index.html`（或自行新增该配置文件）。
 
 ### 构建命令
 
 ```bash
 pnpm install
-pnpm build   # 输出静态文件到 out/
+pnpm preflight   # 可选：单独校验 apis.json 单一真源（build 已内置）
+pnpm build       # preflight + 静态导出到 out/
 ```
 
 ## 3. 可选自建模式（Express 安全服务器）
 
-若希望自托管并启用额外安全加固（Helmet 安全响应头 + 按 IP 速率限制），可使用 `examples/self-host-server.ts` 以自定义服务器模式运行：
+`examples/self-host-server.ts` 以自定义服务器模式运行，提供额外安全加固：
 
 ```bash
 pnpm build
 node examples/self-host-server.ts
 ```
 
-`examples/self-host-server.ts` 会：
-- 用 Helmet 设置 `X-Content-Type-Options`、`X-Frame-Options`、`X-XSS-Protection`、`Referrer-Policy` 等响应头。
-- 对 `/api/check` 手动检查接口施加按 IP 的速率限制（默认每 15 分钟最多 30 次）。
-- 以 `next` 自定义服务器方式提供页面。
+实际行为：
 
-> ⚠️ 注意：`examples/self-host-server.ts` 使用 Next.js 自定义服务器模式，**与静态导出 (`output: 'export'`) 不兼容**。若使用 `examples/self-host-server.ts`，需将 `next.config.mjs` 中的 `output` 改为 `'standalone'` 或移除该配置，并改用 `node examples/self-host-server.ts` 提供服务，而非静态托管。两者二选一。
+- Helmet 配置 CSP（`default-src 'self'`、`frame-ancestors 'none'`、GA4 / Google Fonts / Supabase 白名单）、`X-Frame-Options: DENY`、`X-Content-Type-Options`、`Referrer-Policy: strict-origin-when-cross-origin`，并手动补 `Permissions-Policy`；请求体限制 100kb。
+- **全局**按 IP 限流，默认 100 次 / 60 秒（`MemoryRateLimiter`；若设置 `RATE_LIMIT_REDIS_URL` / `RATE_LIMIT_REDIS_TOKEN` 则改用 Redis）。代码里没有 `/api/check` 专用路由或专用限流。
+- 所有请求经 `server.all(/.*/)` 交给 Next `handle`；启动 10 秒后执行首次后台巡检，之后每 5 分钟一次。
+- 可选：`PORT`（默认 3000）、`SUPABASE_SERVICE_ROLE_KEY`（自建模式必填，缺失会退出）。
 
-## 4. 后台监控任务
+> ⚠️ 该模式与静态导出（`output: 'export'`）**不兼容**：需先把 `next.config.mjs` 改为 `standalone`（或移除 `output`）并重新构建。示例为 TypeScript，需要 Node 22+ 类型剥离或自行编译为 JS；`package.json` 未提供 `tsx` / `ts-node` 运行器。
 
-无论采用哪种前端部署方式，后台监控（每 5 分钟检查全部 API —— 当前 29 个，并写入 Supabase）建议在 Supabase 侧运行：
+## 4. 后台监控任务（可选）
 
-- 使用 **Supabase Cron** 定时调用 Edge Function；或
-- 部署 Edge Function 并由外部调度器触发。
+默认部署下，浏览器端 `useApiMonitor` 每 5 分钟主动探测 29 个 API（数据仅在本地/页面会话中）；若需要服务端持久化，请在 Supabase 侧启用示例任务：
 
-该设计使前端静态托管无需常驻服务器即可保持监控数据更新。
+```bash
+supabase functions deploy monitor --no-verify-jwt
+```
+
+再在 SQL 编辑器执行 `supabase/cron.sql`：注册 `pg_cron` 每 5 分钟 `net.http_post` 调用 `/monitor`，请求体 `{}`，带 `Authorization: Bearer <service_role_key>`。Edge Function 使用平台自动注入的 `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY`，以 service_role 写入 `api_status`（upsert）与 `status_history`（insert），返回：
+
+```json
+{ "ok": true, "checked": 29, "offline": 0, "degraded": 0, "at": "2026-11-09T00:00:00.000Z" }
+```
+
+`cron.sql` 中的 90 天 `status_history` 清理语句为**注释示例**，默认未启用；`alerts` 表没有自动清理任务。
+
+## 5. 部署前检查清单
+
+- [ ] `pnpm-lock.yaml` 已提交且与 `package.json` 一致（CI 使用 `--frozen-lockfile`）
+- [ ] `pnpm preflight` 通过（`apis.json` 前后台一致）
+- [ ] `pnpm lint` / `pnpm test` / `pnpm build` 通过
+- [ ] `SUPABASE_SERVICE_ROLE_KEY` 未出现在任何 `NEXT_PUBLIC_` 变量中
+- [ ] Supabase RLS 策略已启用；OAuth 回调地址已加白名单（如启用登录）
+- [ ] 生产环境强制 HTTPS

@@ -1,26 +1,30 @@
 # Security Policy
 
+> 适用版本：v2.10.35 · 最近校对：2026-11-09
+
 ## Supported Versions
 
-The latest released version of LLM API Sentinel receives security updates.
+Only the latest released version of LLM API Sentinel receives security updates.
 We follow [Semantic Versioning](https://semver.org/) and track the current
-version in `package.json`.
+version in `package.json` (`2.10.35`).
 
-| Version | Supported          |
-| ------- | ------------------ |
-| 2.7.x   | :white_check_mark: |
-| < 2.7   | :x:                |
+| Version      | Supported          |
+| ------------ | ------------------ |
+| 2.10.x (latest) | :white_check_mark: |
+| < 2.10       | :x:                |
 
 ## Reporting a Vulnerability
 
 **Please do not report security vulnerabilities through public GitHub issues.**
 
-Instead, report them privately using one of the following channels:
+Instead, report them privately using **GitHub Private Vulnerability Reporting**:
+open the **Security** tab of this repository and use the "Report a vulnerability"
+button. If that channel is unavailable, open a private request via GitHub
+Discussions or contact the repository owner through their GitHub profile
+(https://github.com/Tanox).
 
-- **GitHub Private Vulnerability Reporting**: use the "Report a vulnerability"
-  button under the **Security** tab of this repository.
-- **Email**: send details to the maintainers (see `package.json` `author` field
-  or the repository's security contact).
+> `package.json` has no `author` field and the repository does not publish a
+> dedicated security mailbox; do not rely on either as a contact channel.
 
 Please include the following in your report:
 
@@ -38,5 +42,8 @@ disclosure with you and credit the reporter (unless anonymity is requested).
 For the project's threat model, data protection, and deployment hardening
 guidance, see:
 
-- [docs/security.md](docs/security.md) — security architecture and best practices
-- [security_best_practices_report.md](security_best_practices_report.md) — detailed audit report
+- [docs/security.md](../docs/security.md) — security architecture and best practices
+- [docs/env.md](../docs/env.md) — environment variable and secret handling
+
+> The previously referenced `security_best_practices_report.md` does not exist
+> in this repository; no external audit report is currently published.

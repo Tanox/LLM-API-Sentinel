@@ -1,5 +1,14 @@
 # 功能规格文档
 
+> 适用版本：v2.10.35 · 最近校对：2026-11-09 · 真源：`app/`、`supabase/` 与 `package.json`
+>
+> **代码对齐要点（下文旧表述与本表冲突时，以本表及源码为准）**：
+> - 29 个监控目标来自单一真源 `app/constants/apis.json`（由 `APIS_TO_CHECK` 导出），不再硬编码于 `app/constants/index.ts`。
+> - 图表为静态导入的 Recharts 面积图，无 `next/dynamic` / `ssr:false` / `ChartSkeleton`；时间范围 1H / 6H / 24H。
+> - 告警：离线 `critical`、延迟 > 1500ms `high`（无 low/medium 分级）；去重仅按 `api_id` + `resolved=false`；默认 Edge Function 不创建告警，前端 `createAlertForResult` 负责。
+> - 手动检查无需登录；`ApiConfig` 仅支持本地配置与恢复默认（无导入/导出）；语言切换无 URL 参数检测；分享仅复制当前 URL 并追加 `ref=share`。
+> - `ChartSkeleton.tsx` 存在但无引用；图例为前 8 个 API 的静态 Badge（不可点击切换）；地理位置为 opt-in 授权后获取。6.x 路线图与末尾验收清单是历史模板，不代表 v2.10.35 待办。
+
 ## 1. 功能总览
 
 LLM API Sentinel 是一个全球主流大模型 API 实时监控系统，提供以下核心功能模块：
@@ -22,7 +31,7 @@ LLM API Sentinel 是一个全球主流大模型 API 实时监控系统，提供�
 
 **功能描述**：实时监控全球主流 AI 供应商的 API 状态和延迟
 
-**监控范围**（共 29 个 API，硬编码于 `app/constants/index.ts` 的 `DEFAULT_APIS`）：
+**监控范围**（共 29 个 API，单一真源 `app/constants/apis.json`（由 `APIS_TO_CHECK` 导出））：
 
 | 区域 | API 名称 | Provider | 状态 |
 |-----|---------|----------|------|
@@ -79,7 +88,7 @@ LLM API Sentinel 是一个全球主流大模型 API 实时监控系统，提供�
 - 悬停显示详细信息
 - 图例显示 API 颜色标识（前 8 个 API）
 - 动态导入：图表组件使用 next/dynamic 延迟加载，减少首屏 bundle
-- 加载时显示 ChartSkeleton 骨架屏
+- 加载时显示页面级 DashboardSkeleton 骨架屏（ChartSkeleton 当前无引用）
 - 服务端渲染禁用（SSR: false）
 
 **时间范围选择器**：
@@ -90,7 +99,7 @@ LLM API Sentinel 是一个全球主流大模型 API 实时监控系统，提供�
 **性能优化**：
 - 使用 useMemo 缓存图表数据计算
 - 使用 Map 进行 O(1) 时间复杂度的数据聚合
-- Recharts 面积图渲染（`ssr:false` 动态导入 + ChartSkeleton 骨架屏）
+- Recharts 面积图渲染（静态导入（页面级 Suspense 骨架由 DashboardSkeleton 提供））
 
 ### 2.3 智能告警系统
 
@@ -100,27 +109,25 @@ LLM API Sentinel 是一个全球主流大模型 API 实时监控系统，提供�
 
 | 类型 | 触发条件 | 严重程度 |
 |-----|---------|---------|
-| **宕机告警** | API 状态为 offline | high |
-| **延迟告警** | 延迟 > 1500ms (LATENCY_THRESHOLD) | low/medium/high |
+| **宕机告警** | API 状态为 offline | critical |
+| **延迟告警** | 延迟 > 1500ms (LATENCY_THRESHOLD) | high |
 | **降级状态** | 延迟 > 1000ms (DEGRADED_THRESHOLD) 但仍在线 | - (状态标记，非告警) |
 
 **延迟告警严重程度分级**：
 | 延迟范围 | 严重程度 |
 |---------|---------|
-| 1500ms - 2250ms | low |
-| 2250ms - 3000ms | medium |
-| > 3000ms | high |
+| > 1500ms | high（无分级） |
 
 **告警规则**：
-- 同一 API 的同一类型未解决告警不会重复创建
-- 宕机告警严重程度为 high
-- 告警去重检查：按 api_id + type + resolved=false 判断
-- 服务端和前端都会执行告警检查（双重保障）
+- 同一 API 存在任何未解决告警即跳过（去重仅按 api_id + resolved=false）
+- 宕机告警严重程度为 critical
+- 告警去重检查：按 api_id + resolved=false 判断（无 type 条件）
+- 告警由前端 createAlertForResult 生成；默认 Edge Function 不写 alerts，仅可选 Express 模式会创建
 
 **告警操作**：
 - 查看活跃告警列表
 - 标记告警为已解决
-- 自动清理已解决超过 90 天的告警
+- 告警自动清理未实现（cron.sql 仅有被注释的 status_history 清理示例）
 
 ### 2.4 用户认证
 
@@ -135,7 +142,7 @@ LLM API Sentinel 是一个全球主流大模型 API 实时监控系统，提供�
 
 **权限控制**：
 - 公开数据：所有用户（包括匿名用户）可查看 API 状态
-- 手动检查：需要登录才能执行
+- 手动检查：无需登录即可执行
 - 写入操作：认证用户可写入（RLS 策略）
 - 后台服务：使用 service_role 密钥绕过 RLS
 
@@ -169,7 +176,7 @@ LLM API Sentinel 是一个全球主流大模型 API 实时监控系统，提供�
 
 **配置持久化**：
 - 配置保存到 localStorage
-- 支持导出/导入配置
+- 配置仅持久化到 localStorage.apiConfig，支持恢复默认（无导入/导出）
 - 配置变更后自动生效
 
 ### 2.7 国际化支持
@@ -204,7 +211,7 @@ LLM API Sentinel 是一个全球主流大模型 API 实时监控系统，提供�
 
 **切换方式**：
 - 通过语言选择器切换
-- URL 参数自动检测
+- 语言由 localStorage 白名单校验与浏览器语言探测决定（无 URL 参数检测）
 - 浏览器语言自动检测
 
 ### 2.8 地理位置检测
@@ -231,7 +238,7 @@ LLM API Sentinel 是一个全球主流大模型 API 实时监控系统，提供�
 
 ### 2.9 分享功能
 
-**功能描述**：用户可将当前分析页面（含筛选、时间范围等状态）以链接形式分享给他人，复制链接时自动附带一条项目宣传文案，多个文案随机选用，提升传播性。
+**功能描述**：用户可复制当前页面 URL（追加 `ref=share`）并附带一条随机宣传文案分享给他人；筛选与时间范围不写入 URL，复制链接时自动附带一条项目宣传文案，多个文案随机选用，提升传播性。
 
 **触发入口**：
 - 仪表盘顶栏（DashboardHeader）的「分享」按钮（`ShareButton` 组件）
@@ -242,7 +249,7 @@ LLM API Sentinel 是一个全球主流大模型 API 实时监控系统，提供�
 <分析链接>
 <随机项目宣传文案>
 ```
-- 第一行：当前 `window.location.href`（含时间范围、语言等查询参数）
+- 第一行：当前 `window.location.href` 追加 `ref=share`（时间范围、语言不进入 URL）
 - 第二行：从宣传文案库中随机抽取一条（`share.promos` 数组，随机均匀分布）
 - 两行之间以换行分隔，便于在 IM / 社交平台直接粘贴
 
@@ -318,7 +325,7 @@ graph TD
 | Dashboard | Auth, Monitor, Data | 需要认证状态、监控数据 |
 | Charts | Monitor, Data | 需要历史监控数据 |
 | Alerts | Monitor, Data | 需要监控结果生成告警 |
-| Config | Auth | 需要登录才能修改配置 |
+| Config | Auth | 本地 localStorage 配置，无需登录 |
 | Theme | Dashboard | 依赖仪表盘展示 |
 | I18n | Dashboard | 依赖仪表盘展示 |
 | Geo | Dashboard | 依赖仪表盘展示 |
@@ -443,7 +450,7 @@ sequenceDiagram
     Client->>Client: 应用主题样式
 ```
 
-## 6. 功能非功能需求
+## 6. 非功能需求
 
 ### 6.1 性能要求
 
@@ -496,7 +503,7 @@ sequenceDiagram
 - [ ] 图表显示最近 50 个数据点
 - [ ] 支持多个 API 对比显示
 - [ ] 悬停显示详细信息
-- [ ] 图例点击切换显示
+- [ ] 前 8 个 API 静态图例 Badge（不可点击切换）
 
 ### 7.3 智能告警系统
 
@@ -510,7 +517,7 @@ sequenceDiagram
 
 **验收标准**：
 - [ ] 支持 Google OAuth 登录
-- [ ] 未登录用户无法执行手动检查
+- [ ] 访客也可执行手动只读探测
 - [ ] 登录状态持久化
 - [ ] 支持登出功能
 

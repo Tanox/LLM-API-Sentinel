@@ -1,5 +1,14 @@
 # 架构设计文档
 
+> 适用版本：v2.10.35 · 最近校对：2026-11-09 · 真源：`app/`、`supabase/` 与 `package.json`
+>
+> **代码对齐要点（下文旧表述与本表冲突时，以本表及源码为准）**：
+> - 依赖版本以 `package.json` 的 `^` 范围为准（Next.js ^14.2.13 / React ^18.2.0 / Recharts ^3.8.0 / date-fns ^4.1.0 / Zustand ^5.0.12），Tailwind CSS 固定 4.1.11；CI 为 Node.js 22 + pnpm 9.15.0。
+> - 图表 `LatencyHistoryChart` 为静态导入的 Recharts 面积图（无 `ssr:false`、无 `ChartSkeleton` 引用）；`DashboardClient` 仅动态导入 `ApiConfig` / `AlertsDropdown`。
+> - 默认后台为 `supabase/cron.sql`（pg_cron 每 5 分钟）→ Edge Function `POST /monitor`；`examples/self-host-server.ts` 仅为可选自建模式，限流为全局 100 次 / 60 秒。
+> - 状态数据 = 首屏 `api_status` 查询 + 前端 5 分钟定时探测；仅 `alerts` 表使用 Realtime。手动检查无需登录。
+> - 重试为固定 1000ms 延迟（非指数退避），常量名为 `MAX_CONCURRENT_REQUESTS = 5`；告警由前端 `createAlertForResult` 生成，默认 Edge Function 不创建告警。
+
 ## 1. 架构概览
 
 LLM API Sentinel 采用**静态前端 + Supabase 后端**架构，无需自定义 API 路由。前端直接与 Supabase PostgreSQL 进行实时数据同步。
@@ -7,20 +16,20 @@ LLM API Sentinel 采用**静态前端 + Supabase 后端**架构，无需自定�
 ### 运行模式
 
 - **默认部署（静态导出）**：`next.config.mjs` 启用 `output: 'export'`，构建产物输出到 `out/`，由 Vercel / EdgeOne Pages / Netlify 等静态托管提供服务。后台监控通过 Supabase Cron / Edge Functions 运行，**此模式下无需自定义服务器**。
-- **可选自建模式（Express 安全服务器）**：`examples/self-host-server.ts` 以自定义服务器模式包装 Next.js，新增 Helmet 安全响应头与按 IP 速率限制（用于手动健康检查）。该模式与静态导出互斥，仅用于 `node examples/self-host-server.ts` 自托管场景。两种模式的后台监控逻辑一致（均执行定时 API 检查并写入 Supabase）。
+- **可选自建模式（Express 安全服务器）**：`examples/self-host-server.ts` 以自定义服务器模式包装 Next.js，新增 Helmet 安全响应头与全局按 IP 限流（100 次 / 60 秒）。该模式与静态导出互斥，仅用于 `node examples/self-host-server.ts` 自托管场景。默认后台持久化由 Supabase Cron 调用 Edge Function monitor 完成；可选自建 Express 模式另用 setInterval 每 5 分钟巡检。
 
 ### 1.1 技术栈
 | 类别 | 技术 | 版本 |
 |-----|------|------|
-| 前端框架 | Next.js 14.2.13 (App Router) | 14.2.13 |
-| 后端服务器（可选） | Express 5.2.1（仅 `examples/self-host-server.ts` 自建模式） | 5.2.1 |
+| 前端框架 | Next.js 14.2.13 (App Router) | ^14.2.13 |
+| 后端服务器（可选） | Express 5.2.1（仅 `examples/self-host-server.ts` 自建模式） | ^5.2.1 |
 | 数据库 | Supabase PostgreSQL | - |
 | 身份验证 | Supabase Auth (Google OAuth) | - |
 | 样式 | Tailwind CSS 4.1.11 | 4.1.11 |
-| 图表 | Recharts 3.8.0 面积图（`ssr:false` 动态导入） | 3.8.0 |
+| 图表 | Recharts 面积图（静态导入，animationDuration=1200） | ^3.8.0 |
 | 图标 | Lucide React | - |
-| 状态管理 | Zustand 5.0.12 | 5.0.12 |
-| 时间处理 | date-fns 4.1.0 | 4.1.0 |
+| 状态管理 | Zustand 5.0.12 | ^5.0.12 |
+| 时间处理 | date-fns 4.1.0 | ^4.1.0 |
 
 ### 1.2 系统架构图
 
@@ -52,7 +61,7 @@ graph TD
     Dashboard -->|Reads| Store
     Components -->|Uses| Hooks
     Hooks -->|Updates| Store
-    Store -->|Realtime Sync| DB
+    Store -->|首屏查询 + 前端定时探测| DB
     Auth -->|Authenticates| Dashboard
     
     Monitor -->|Writes| DB
@@ -62,7 +71,7 @@ graph TD
     US -->|Returns Status| Monitor
     CN -->|Returns Status| Monitor
     
-    DB -->|Realtime Listen| Dashboard
+    DB -->|alerts 表 Realtime| Dashboard
 ```
 
 ## 2. 前端架构
@@ -91,7 +100,7 @@ graph TD
     ApiStatusGrid --> StatusDot[StatusDot]
     ApiStatusGrid --> ProgressBar[ProgressBar]
     
-    HistoryChartSection --> ChartSkeleton[ChartSkeleton]
+    HistoryChartSection --> DashboardSkeleton[页面级 Suspense 骨架]
     HistoryChartSection --> LatencyHistoryChart[LatencyHistoryChart]
     
     DashboardHeader --> AlertsDropdown[AlertsDropdown]
@@ -116,7 +125,7 @@ graph TD
 | **ApiConfig** | API 配置面板 | 本地存储 |
 | **StatusGrid** | 兼容层组件，转发到 ApiStatusGrid | `statuses` |
 | **LatencyHistoryChart** | 延迟历史图表 | `history`, `statuses` |
-| **ChartSkeleton** | 图表加载骨架屏 | 无 |
+| **DashboardSkeleton** | 页面级加载骨架屏（ChartSkeleton 无引用） | 无 |
 | **DashboardFooter** | 页脚信息 | 无 |
 
 ### 2.3 数据管理架构
@@ -162,7 +171,7 @@ graph TD
     useGeo --> Geo
     useGeo --> GeoAPI
     
-    Supabase -->|Realtime| API
+    Supabase -->|首屏 select| API
     Supabase -->|Realtime| Alerts
 ```
 
@@ -224,7 +233,7 @@ graph TD
     subgraph ConcurrencyManager
         Queue[请求队列]
         Active[活跃请求池]
-        Limit[并发限制器\nMAX_CONCURRENT=5]
+        Limit[并发限制器\nMAX_CONCURRENT_REQUESTS=5]
         Processor[请求处理器]
     end
     
@@ -282,7 +291,7 @@ sequenceDiagram
     participant Client as Next.js Client
     participant Auth as Supabase Auth
     participant Supabase as Supabase
-    participant Monitor as Express Monitor
+    participant Monitor as Supabase Cron / Edge Function monitor
     
     Client->>Auth: 用户登录请求
     Auth-->>Client: 返回用户信息
@@ -343,7 +352,7 @@ sequenceDiagram
     
     Client->>Client: 从界面移除告警
     
-    Note over Notification: 可选：发送邮件/短信通知
+    Note over Notification: 可选：发送 Webhook 通知（默认 enabled: false）
     Supabase->>Notification: 新告警触发
     Notification->>Notification: 根据配置发送通知
 ```
@@ -523,7 +532,7 @@ graph TD
 | 优化项 | 实现方式 | 收益 |
 |-----|---------|------|
 | **并发控制** | 限制最大并发数为 5 | 避免请求过多被限流 |
-| **重试机制** | 指数退避策略 | 提高成功率 |
+| **重试机制** | 固定 1000ms 延迟重试（RETRY_DELAY） | 提高成功率 |
 | **批量写入** | Supabase 批量操作 | 减少网络往返 |
 | **智能缓存** | 根据状态动态调整过期时间 | 减少不必要请求 |
 | **超时控制** | 6 秒请求超时 | 防止长时间阻塞 |

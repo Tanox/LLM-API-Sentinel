@@ -1,5 +1,22 @@
 # Changelog
 
+## [Unreleased] - 2026-11-09
+
+### Docs
+- **全量文档与代码对齐**: 以 `package.json` v2.10.35 为基线，校对并更新双语 README、`docs/` 5 份补充文档、`openspec/` 7 份规范与索引、`openspec/config.yaml`、`.github/` 社区文件；统一术语（静态导出 / Supabase Cron + Edge Function `monitor` / 浅色与深色双主题 / Recharts / pnpm 9.15.0）与格式风格。
+- **功能与接口事实修正**: 29 个 API 由 `app/constants/apis.json` 单一真源维护并由 `sync-apis.mjs` 同步；状态为首屏查询 + 前端 5 分钟定时探测，仅 `alerts` 使用 Realtime；手动检查无需登录；告警为 `critical` / `high` 且由前端生成；`POST /monitor` 返回 `{ ok, checked, offline, degraded, at }`；组件 Props、函数签名与返回值按源码修订。
+- **运行步骤与依赖版本**: 统一 pnpm 脚本（含 `preflight` / `sync:apis`）、Node.js 22 / pnpm 9.15.0、CI 门禁顺序、覆盖率阈值 70/55/70/70；补全环境变量清单（`NEXT_PUBLIC_SITE_URL`、`NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION`、`PORT`、`RATE_LIMIT_REDIS_*`）与 Edge Function secrets。
+- **删除废弃内容**: 移除或更正不存在的 `server.ts`、`/api/check`、`security_best_practices_report.md`、`mock-data.ts`、Cloud Functions / Firestore 术语及 zod `safeParse` 描述；修复 `.github/` 全部失效相对链接与 2.7.x 旧版本支持表。
+- **补充近期变更记录**: 在文档中补齐 v2.10.27~v2.10.35 引入的 API 单一真源同步、i18n 模块拆分、自托管脚本迁移、GA4 衡量 ID 更新、原型语义 alpha token 与语义化 id 等变更。
+- **归档标注**: `openspec/changes/` 提案保留原有历史版本号，新增「历史归档」注记，避免被误读为当前状态。
+
+### Known / 待人工确认
+- 当前工作区 `pnpm-lock.yaml` 缺失（`git status` 显示 D），但 CI 使用 `pnpm install --frozen-lockfile`；推送前需恢复锁文件。
+- 本次仅校准文档，未擅自 bump `package.json` 版本；是否按 `docs/contributing.md` 的「每次修改升级版本」规则发版，需维护者确认。
+- `app/layout.tsx` 的 metadata description 仍写「12+ AI providers」，与 29 个 API 的规模表述不一致（属代码文案，非文档）。
+- `public/` 缺 `/favicon.ico` 与 `/og-image.png`（`app/layout.tsx` 引用），需补资源或改引用。
+- `app/hooks/useAuth.ts` 的 `redirectTo: .../auth/callback` 无对应回调路由，需确认登录流程。
+
 ## [2.10.35] - 2026-08-29
 
 ### Chore / Docs
